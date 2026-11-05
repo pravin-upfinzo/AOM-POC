@@ -46,6 +46,12 @@ Completed audio Blobs, transcripts, and extraction metadata are stored in Indexe
 
 Microphone capture requires `getUserMedia` support and a secure context such as localhost or HTTPS. `MediaRecorder` and browser speech recognition support varies by browser. If speech recognition is unavailable, Browser Speech mode can still save the audio but will not have a transcript; choose Gemini Audio mode for a new recording.
 
+## Transcript review
+Recording History keeps the initial transcript read-only and stores a separate corrected transcript. Process with Gemini sends the saved corrected text to the existing extraction endpoint. Retry Audio Transcription uploads the selected local audio only after the user requests it; Gemini's transcript is stored separately and must be explicitly selected before its extraction is eligible to apply. Unmatched dropdown candidates are shown for manual review and are never applied as valid options. Browser phrase hints are feature-detected and do not replace transcript text automatically.
+
+## Voice form entry
+Use **Start Voice Input** to capture speech and audio together. Stop & Process saves the recording, extracts from available browser speech, and falls back to Gemini Audio only when there is no transcript. Suggested field values remain drafts until **Confirm Suggested Values**; they do not overwrite confirmed form values before review. Recording History is a compact list; transcript editing and Gemini comparison are available from an individual recording's details. Deleting a recording removes its local audio and transcript history, but leaves confirmed form values unchanged.
+
 ## Important production notes
 - **This is a functional prototype, not a production-ready fintech backend.** The Submit Request button validates locally but does not save data. Connect it to your existing authenticated PHP submission endpoint.
 - Protect API endpoints with session authentication, CSRF controls, per-user rate limits, and strict request-size limits. Do not expose Gemini API keys to React. The PHP demo accepts client-provided dropdown options; production should load allowed values from your database instead.

@@ -107,7 +107,8 @@ Return ONLY valid JSON in this structure:
 
 {
   "transcript": "",
-  "fields": {}
+    "fields": {},
+    "unmatchedFields": {}
 }
 
 ALLOWED FIELD KEYS:
@@ -142,7 +143,9 @@ EXTRACTION RULES:
    in allowedOptions. Return the exact allowed value.
 
 9. If a dropdown value does not match an allowed
-   option confidently, omit that field.
+    option confidently, put the spoken value in
+    unmatchedFields under the same key. Do not select
+    a nearby allowed value.
 
 10. If both bankName and branchName are provided,
     ensure the branch belongs to the selected bank
@@ -166,6 +169,20 @@ EXTRACTION RULES:
 
 18. Return the supplied speech transcript unchanged
     in the transcript property.
+
+19. Treat domainVocabulary as recognition hints only,
+    never as rules to replace a spoken value.
+
+20. Preserve company, entity, and acronym wording as
+    supplied. Do not expand or repair a name based only
+    on phonetic similarity.
+
+21. Use dropdown values from allowedOptions as the
+    authoritative options. Do not invent a nearby value.
+
+22. Common terms such as TSP, NBFC, HDFC Bank,
+    Current Account, Savings Account, and LLP may help
+    interpret context, but do not override the speech.
 PROMPT;
 
     // 4. Include dropdown options
@@ -294,6 +311,21 @@ PROMPT;
 
     // 11. Validate extracted fields
     $fields = [];
+    $unmatchedFields = [];
+
+    $parsedUnmatchedFields = $parsed['unmatchedFields'] ?? [];
+
+    if (is_array($parsedUnmatchedFields)) {
+        foreach ($parsedUnmatchedFields as $field => $value) {
+            if (
+                in_array($field, $allowedFields, true) &&
+                is_string($value) &&
+                trim($value) !== ''
+            ) {
+                $unmatchedFields[$field] = trim($value);
+            }
+        }
+    }
 
     $extractedFields = $parsed['fields'] ?? [];
 
@@ -359,11 +391,16 @@ PROMPT;
         $fields[$field] = $value;
     }
 
+    foreach (array_keys($fields) as $field) {
+        unset($unmatchedFields[$field]);
+    }
+
     // 12. Return compatible frontend response
     return [
         'transcript' => is_string($parsed['transcript'] ?? null)
             ? $parsed['transcript']
             : '',
-        'fields' => $fields
+        'fields' => $fields,
+        'unmatchedFields' => $unmatchedFields
     ];
 }

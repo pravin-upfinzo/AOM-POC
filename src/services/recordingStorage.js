@@ -1,3 +1,5 @@
+import { prepareRecording } from './transcriptModel.js';
+
 const DATABASE_NAME = 'fintech-portal-demo';
 const DATABASE_VERSION = 1;
 const RECORDINGS_STORE = 'recordings';
@@ -132,7 +134,37 @@ export function updateRecording(id, updates) {
       }
 
       const recording = {
-        ...request.result,
+        ...prepareRecording(request.result),
+        ...updates,
+        id,
+        updatedAt: new Date().toISOString()
+      };
+      store.put(recording);
+      setResult(recording);
+    };
+  });
+}
+
+export function updateRecordingIfTranscriptMatches(id, transcript, updates) {
+  return withStore('readwrite', (store, setResult, transaction, setOperationError) => {
+    const request = store.get(id);
+    request.onsuccess = () => {
+      if (!request.result) {
+        setOperationError(new Error('Recording was not found in storage.'));
+        return;
+      }
+
+      const currentTranscript = typeof request.result.correctedTranscript === 'string'
+        ? request.result.correctedTranscript
+        : request.result.transcript || '';
+
+      if (currentTranscript !== transcript) {
+        setResult(null);
+        return;
+      }
+
+      const recording = {
+        ...prepareRecording(request.result),
         ...updates,
         id,
         updatedAt: new Date().toISOString()

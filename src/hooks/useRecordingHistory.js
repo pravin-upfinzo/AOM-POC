@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
   getRecordingsByDraft,
+  deleteRecording as deleteStoredRecording,
   saveRecording,
-  updateRecording
+  updateRecording,
+  updateRecordingIfTranscriptMatches
 } from '../services/recordingStorage.js';
+import { prepareRecording } from '../services/transcriptModel.js';
 
 export const DEMO_DRAFT_ID = 'local-demo-draft';
 
@@ -22,7 +25,7 @@ export default function useRecordingHistory() {
 
     const loadRecordings = async () => {
       try {
-        const savedRecordings = await getRecordingsByDraft(DEMO_DRAFT_ID);
+        const savedRecordings = (await getRecordingsByDraft(DEMO_DRAFT_ID)).map(prepareRecording);
         if (active) setRecordings(savedRecordings);
 
         for (const recording of savedRecordings) {
@@ -54,10 +57,11 @@ export default function useRecordingHistory() {
 
   const save = async (recording) => {
     try {
-      await saveRecording(recording);
-      setRecordings((current) => replaceRecording(current, recording));
+      const prepared = prepareRecording(recording);
+      await saveRecording(prepared);
+      setRecordings((current) => replaceRecording(current, prepared));
       setStorageError('');
-      return recording;
+      return prepared;
     } catch (error) {
       setStorageError(error.message || 'Unable to save this recording.');
       throw error;
@@ -66,7 +70,7 @@ export default function useRecordingHistory() {
 
   const update = async (id, updates) => {
     try {
-      const recording = await updateRecording(id, updates);
+      const recording = prepareRecording(await updateRecording(id, updates));
       setRecordings((current) => replaceRecording(current, recording));
       setStorageError('');
       return recording;
@@ -76,11 +80,39 @@ export default function useRecordingHistory() {
     }
   };
 
+  const updateIfTranscriptMatches = async (id, transcript, updates) => {
+    try {
+      const saved = await updateRecordingIfTranscriptMatches(id, transcript, updates);
+      if (!saved) return null;
+
+      const recording = prepareRecording(saved);
+      setRecordings((current) => replaceRecording(current, recording));
+      setStorageError('');
+      return recording;
+    } catch (error) {
+      setStorageError(error.message || 'Unable to save extraction results.');
+      throw error;
+    }
+  };
+
+  const remove = async (id) => {
+    try {
+      await deleteStoredRecording(id);
+      setRecordings((current) => current.filter((recording) => recording.id !== id));
+      setStorageError('');
+    } catch (error) {
+      setStorageError(error.message || 'Unable to delete this recording.');
+      throw error;
+    }
+  };
+
   return {
     recordings,
     recordingsLoading,
     storageError,
     saveRecording: save,
-    updateRecording: update
+    updateRecording: update,
+    updateIfTranscriptMatches,
+    deleteRecording: remove
   };
 }

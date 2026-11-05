@@ -1,17 +1,8 @@
-import { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { BookOpen, Trash2, X } from 'lucide-react';
 import AudioPlayer from './AudioPlayer.jsx';
-
-const FIELD_LABELS = {
-  entityName: 'Entity Name',
-  entityType: 'Entity Type',
-  tsp: 'TSP',
-  services: 'Services',
-  bankName: 'Bank Name',
-  branchName: 'Branch Name',
-  assignedBy: 'Task Assigned By',
-  date: 'Date'
-};
+import RecordingDetail from './RecordingDetail.jsx';
+import { getWorkingTranscript, prepareRecording } from '../../services/transcriptModel.js';
 
 function formatDuration(durationMs) {
   const seconds = Math.floor(Math.max(0, durationMs || 0) / 1000);
@@ -23,63 +14,83 @@ function formatTimestamp(value) {
   return Number.isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString();
 }
 
-function RecordingItem({ recording, number, active, onSelect }) {
-  const fields = Object.entries(recording.extractedFields || {})
-    .filter(([key, value]) => FIELD_LABELS[key] && value);
+function HistoryItem({ recording: rawRecording, number, onOpen, onDelete, deleting }) {
+  const recording = prepareRecording(rawRecording);
+  const transcript = getWorkingTranscript(recording);
+  const preview = transcript || recording.transcriptionStatus === 'processing'
+    ? transcript || 'Transcribing audio…'
+    : 'No transcript available.';
+  const [deleteError, setDeleteError] = useState('');
+
+  const deleteRecording = async () => {
+    const confirmed = window.confirm(
+      `Delete Recording ${number} (${formatTimestamp(recording.createdAt)})? This removes its saved audio and transcript history from this browser. Previously confirmed form values will remain unchanged.`
+    );
+    if (!confirmed) return;
+
+    setDeleteError('');
+    try {
+      await onDelete(recording);
+    } catch (error) {
+      setDeleteError(error.message || 'Unable to delete this recording.');
+    }
+  };
 
   return (
-    <article className={`recording-item${active ? ' is-active' : ''}`}>
-      <div className="recording-item-heading">
-        <div>
-          <h3>Recording {number}</h3>
-          <p className="mini">{formatTimestamp(recording.createdAt)}</p>
+    <article className="history-row">
+      <div className="history-row-main">
+        <div className="recording-item-heading">
+          <div>
+            <h3>Recording {number}</h3>
+            <p className="mini">{formatTimestamp(recording.createdAt)} · {formatDuration(recording.durationMs)}</p>
+          </div>
+          <span className={`recording-status status-${recording.status}`}>{recording.status}</span>
         </div>
-        <span className={`recording-status status-${recording.status}`}>{recording.status}</span>
+        <AudioPlayer audioBlob={recording.audioBlob} />
+        <p className="history-transcript-preview">{preview}</p>
+        <div className="history-row-actions">
+          <button type="button" className="action secondary compact-action" onClick={() => onOpen(recording)}>
+            <BookOpen size={14} /> View Details
+          </button>
+          <button type="button" className="action danger-outline compact-action" disabled={deleting} onClick={deleteRecording}>
+            <Trash2 size={14} /> {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+        {deleteError && <p className="recording-error" role="alert">{deleteError}</p>}
       </div>
-      <p className="recording-meta">
-        {recording.recordedBy?.name || 'Demo User'} · Demo only · {formatDuration(recording.durationMs)}
-      </p>
-      <AudioPlayer audioBlob={recording.audioBlob} />
-      {recording.transcript ? (
-        <div className="recording-detail">
-          <h4>Transcript</h4>
-          <p>{recording.transcript}</p>
-        </div>
-      ) : <p className="mini recording-detail">No transcript available.</p>}
-      {fields.length > 0 && (
-        <div className="recording-detail">
-          <h4>Extracted values</h4>
-          <dl>
-            {fields.map(([key, value]) => (
-              <div key={key}>
-                <dt>{FIELD_LABELS[key]}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
-      {recording.error && <p className="recording-error">{recording.error}</p>}
-      <button type="button" className="action secondary recording-select" onClick={() => onSelect(recording)}>
-        {active ? 'Selected' : 'Select recording'}
-      </button>
     </article>
   );
 }
 
 export default function RecordingHistoryDrawer({
   open,
+  initialDetailId,
   recordings,
   recordingsLoading,
   storageError,
   activeRecordingId,
+  processingIds,
+  transcribingIds,
+  deletingIds,
+  onDraftChange,
   onSelect,
+  onSaveAndReprocess,
+  onRetryTextExtraction,
+  onRetryAudioTranscription,
+  onChooseTranscript,
+  onConfirm,
+  onDelete,
   onClose
 }) {
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
   const closeHandlerRef = useRef(onClose);
+  const [detailId, setDetailId] = useState(null);
+  const [detailHasUnsavedEdits, setDetailHasUnsavedEdits] = useState(false);
   closeHandlerRef.current = onClose;
+  const selectedRecording = recordings.find((recording) => recording.id === detailId);
+  const selectedNumber = selectedRecording ? recordings.findIndex((recording) => recording.id === selectedRecording.id) : -1;
+  const recordingNumber = selectedNumber < 0 ? 0 : recordings.length - selectedNumber;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -94,6 +105,14 @@ export default function RecordingHistoryDrawer({
   }, [open]);
 
   useEffect(() => {
+    if (open) setDetailId(initialDetailId || null);
+  }, [open, initialDetailId]);
+
+  useEffect(() => {
+    setDetailHasUnsavedEdits(false);
+  }, [selectedRecording?.id, selectedRecording?.correctedTranscript]);
+
+  useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return undefined;
 
@@ -104,17 +123,34 @@ export default function RecordingHistoryDrawer({
 
   useEffect(() => {
     if (!open) return undefined;
-
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        dialogRef.current?.close();
+        closeDrawer();
       }
     };
-
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [open]);
+
+  const handleDelete = async (recording) => {
+    await onDelete(recording);
+    if (detailId === recording.id) {
+      setDetailId(null);
+      setDetailHasUnsavedEdits(false);
+    }
+  };
+
+  const closeDrawer = () => {
+    if (detailHasUnsavedEdits && !window.confirm('Discard unsaved transcript edits and close Voice Transcript?')) return;
+    dialogRef.current?.close();
+  };
+
+  const backToHistory = () => {
+    if (detailHasUnsavedEdits && !window.confirm('Discard unsaved transcript edits and return to Recording History?')) return;
+    setDetailHasUnsavedEdits(false);
+    setDetailId(null);
+  };
 
   return (
     <dialog
@@ -123,40 +159,63 @@ export default function RecordingHistoryDrawer({
       aria-labelledby="recording-history-title"
       onCancel={(event) => {
         event.preventDefault();
-        event.currentTarget.close();
+        closeDrawer();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) event.currentTarget.close();
+        if (event.target === event.currentTarget) closeDrawer();
       }}
     >
       <div className="recording-drawer">
         <header className="recording-drawer-header">
           <div>
-            <h2 id="recording-history-title">Recording History</h2>
-            <p className="mini">{recordings.length} saved recording{recordings.length === 1 ? '' : 's'}</p>
+            <h2 id="recording-history-title">{selectedRecording ? 'Voice Transcript' : 'Recording History'}</h2>
+            <p className="mini">{selectedRecording ? 'Stored locally in this browser' : `${recordings.length} saved recording${recordings.length === 1 ? '' : 's'}`}</p>
           </div>
-          <button ref={closeRef} type="button" className="recording-icon-button" aria-label="Close recording history" onClick={() => dialogRef.current?.close()}>
+          <button ref={closeRef} type="button" className="recording-icon-button" aria-label="Close recording history" onClick={closeDrawer}>
             <X size={19} />
           </button>
         </header>
         <div className="recording-drawer-content">
-          {recordingsLoading && <p role="status" className="mini">Loading recordings…</p>}
           {storageError && <p role="alert" className="recording-storage-error">Recording storage: {storageError}</p>}
-          {!recordingsLoading && recordings.length === 0 && (
-            <p className="recording-empty">No saved recordings yet.</p>
-          )}
-          {recordings.map((recording, index) => (
-            <RecordingItem
-              key={recording.id}
-              recording={recording}
-              number={recordings.length - index}
-              active={recording.id === activeRecordingId}
-              onSelect={(selected) => {
-                onSelect(selected);
-                dialogRef.current?.close();
+          {recordingsLoading && <p role="status" className="mini">Loading recordings…</p>}
+          {selectedRecording ? (
+            <RecordingDetail
+              key={selectedRecording.id}
+              rawRecording={selectedRecording}
+              number={recordingNumber}
+              active={selectedRecording.id === activeRecordingId}
+              processing={processingIds.includes(selectedRecording.id)}
+              transcribing={transcribingIds.includes(selectedRecording.id)}
+              onDraftChange={(id, value) => {
+                onDraftChange(id, value);
+                setDetailHasUnsavedEdits(value !== getWorkingTranscript(selectedRecording));
               }}
+              onBack={backToHistory}
+              onSaveAndReprocess={onSaveAndReprocess}
+              onRetryTextExtraction={onRetryTextExtraction}
+              onRetryAudioTranscription={onRetryAudioTranscription}
+              onChooseTranscript={onChooseTranscript}
+              onConfirm={onConfirm}
+              onDelete={handleDelete}
             />
-          ))}
+          ) : !recordingsLoading && recordings.length === 0 ? (
+            <p className="recording-empty">No saved recordings yet.</p>
+          ) : (
+            recordings.map((recording, index) => (
+              <HistoryItem
+                key={recording.id}
+                recording={recording}
+                number={recordings.length - index}
+                deleting={deletingIds.includes(recording.id)}
+                onOpen={(selected) => {
+                  setDetailHasUnsavedEdits(false);
+                  setDetailId(selected.id);
+                  onSelect(selected);
+                }}
+                onDelete={handleDelete}
+              />
+            ))
+          )}
         </div>
       </div>
     </dialog>
