@@ -31,6 +31,7 @@ export function prepareRecording(recording) {
       || (hasExtractedFields && extractionTranscriptSnapshot !== correctedTranscript),
     transcriptionStatus: recording.transcriptionStatus || 'idle',
     transcriptionError: recording.transcriptionError ?? null,
+    extractionStatus: recording.extractionStatus || (hasExtractedFields ? 'completed' : 'idle'),
     extractionError: recording.extractionError ?? null
   };
 }

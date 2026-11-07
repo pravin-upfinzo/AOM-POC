@@ -16,6 +16,7 @@ export default function VoiceCapturePanel({
   processing,
   transcribing,
   transcript,
+  interimTranscript,
   status,
   error,
   retryLabel,
@@ -63,6 +64,12 @@ export default function VoiceCapturePanel({
               return <span key={index} style={{ height: `${4 + level * 34}px` }} />;
             })}
           </div>
+          {(transcript || interimTranscript) && (
+            <div className="live-transcript-preview" aria-live="polite">
+              {transcript && <p><strong>Transcript</strong> {transcript}</p>}
+              {interimTranscript && <p className="live-interim-transcript">Listening: {interimTranscript}</p>}
+            </div>
+          )}
           <div className="voice-capture-actions">
             {pauseSupported && (isPaused
               ? <button type="button" className="action secondary" onClick={onResume}><Play size={15} /> Resume</button>
@@ -82,7 +89,8 @@ export default function VoiceCapturePanel({
         <div className="voice-processing" role="status">
           <LoaderCircle size={17} className="processing-spinner" />
           <span>{isStarting ? 'Requesting microphone access…' : transcribing ? 'Transcribing audio…' : isFinalizing ? 'Saving recording…' : 'Processing voice input…'}</span>
-          {transcript && <p>{transcript}</p>}
+          {transcript && <p className="live-final-transcript"><strong>Transcript</strong> {transcript}</p>}
+          {interimTranscript && <p className="live-interim-transcript">Listening: {interimTranscript}</p>}
         </div>
       )}
 

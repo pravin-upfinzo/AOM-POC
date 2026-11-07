@@ -14,8 +14,10 @@ function formatTimestamp(value) {
   return Number.isNaN(date.getTime()) ? 'Unknown date' : date.toLocaleString();
 }
 
-function HistoryItem({ recording: rawRecording, number, onOpen, onDelete, deleting }) {
+function HistoryItem({ recording: rawRecording, number, onOpen, onDelete, deleting, processing, transcribing }) {
   const recording = prepareRecording(rawRecording);
+  const statusLabel = transcribing ? 'Transcribing' : processing ? 'Processing' : recording.transcriptionStatus === 'error' ? 'Transcription error' : recording.extractionStatus === 'error' ? 'Extraction error' : recording.status;
+  const statusClass = statusLabel.toLowerCase().replaceAll(' ', '-');
   const transcript = getWorkingTranscript(recording);
   const preview = transcript || recording.transcriptionStatus === 'processing'
     ? transcript || 'Transcribing audio…'
@@ -44,7 +46,7 @@ function HistoryItem({ recording: rawRecording, number, onOpen, onDelete, deleti
             <h3>Recording {number}</h3>
             <p className="mini">{formatTimestamp(recording.createdAt)} · {formatDuration(recording.durationMs)}</p>
           </div>
-          <span className={`recording-status status-${recording.status}`}>{recording.status}</span>
+          <span className={`recording-status status-${statusClass}`}>{statusLabel}</span>
         </div>
         <AudioPlayer audioBlob={recording.audioBlob} />
         <p className="history-transcript-preview">{preview}</p>
@@ -78,7 +80,6 @@ export default function RecordingHistoryDrawer({
   onRetryTextExtraction,
   onRetryAudioTranscription,
   onChooseTranscript,
-  onConfirm,
   onDelete,
   onClose
 }) {
@@ -195,7 +196,6 @@ export default function RecordingHistoryDrawer({
               onRetryTextExtraction={onRetryTextExtraction}
               onRetryAudioTranscription={onRetryAudioTranscription}
               onChooseTranscript={onChooseTranscript}
-              onConfirm={onConfirm}
               onDelete={handleDelete}
             />
           ) : !recordingsLoading && recordings.length === 0 ? (
@@ -207,6 +207,8 @@ export default function RecordingHistoryDrawer({
                 recording={recording}
                 number={recordings.length - index}
                 deleting={deletingIds.includes(recording.id)}
+                processing={processingIds.includes(recording.id)}
+                transcribing={transcribingIds.includes(recording.id)}
                 onOpen={(selected) => {
                   setDetailHasUnsavedEdits(false);
                   setDetailId(selected.id);

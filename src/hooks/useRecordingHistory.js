@@ -29,12 +29,12 @@ export default function useRecordingHistory() {
         if (active) setRecordings(savedRecordings);
 
         for (const recording of savedRecordings) {
-          if (recording.status !== 'processing') continue;
+          if (recording.status !== 'processing' && recording.extractionStatus !== 'processing') continue;
 
           try {
             const recovered = await updateRecording(recording.id, {
-              status: 'error',
-              error: 'Processing was interrupted. Select this recording to retry.'
+              extractionStatus: 'error',
+              extractionError: 'Processing was interrupted. Select this recording to retry.'
             });
             if (active) setRecordings((current) => replaceRecording(current, recovered));
           } catch (error) {

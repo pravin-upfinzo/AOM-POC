@@ -30,7 +30,10 @@ function waitForRecognitionEnd(session) {
 }
 
 function emitTranscript(session) {
-  session.onTranscript?.([...session.speechSegments, session.currentSpeech].filter(Boolean).join(' ').trim());
+  const finalTranscript = [...session.speechSegments, session.segmentFinalText].filter(Boolean).join(' ').trim();
+  const interimTranscript = session.segmentInterimText;
+  const displayTranscript = [finalTranscript, interimTranscript].filter(Boolean).join(' ').trim();
+  session.onTranscript?.({ finalTranscript, interimTranscript, displayTranscript });
 }
 
 function startRecognition(session) {
@@ -38,7 +41,8 @@ function startRecognition(session) {
 
   const recognition = new SpeechRecognitionApi();
   session.recognition = recognition;
-  session.currentSpeech = '';
+  session.segmentFinalText = '';
+  session.segmentInterimText = '';
   session.recognitionEnded = new Promise((resolve) => {
     session.resolveRecognitionEnd = resolve;
   });
@@ -55,11 +59,15 @@ function startRecognition(session) {
   }
 
   recognition.onresult = (event) => {
-    let words = '';
+    let finalWords = '';
+    let interimWords = '';
     for (let index = 0; index < event.results.length; index += 1) {
-      words += `${event.results[index][0].transcript} `;
+      const result = event.results[index];
+      if (result.isFinal) finalWords += `${result[0].transcript} `;
+      else interimWords += `${result[0].transcript} `;
     }
-    session.currentSpeech = words.trim();
+    session.segmentFinalText = finalWords.trim();
+    session.segmentInterimText = interimWords.trim();
     emitTranscript(session);
   };
 
@@ -73,8 +81,9 @@ function startRecognition(session) {
   };
 
   recognition.onend = () => {
-    if (session.currentSpeech) session.speechSegments.push(session.currentSpeech);
-    session.currentSpeech = '';
+    if (session.segmentFinalText) session.speechSegments.push(session.segmentFinalText);
+    session.segmentFinalText = '';
+    session.segmentInterimText = '';
     emitTranscript(session);
     session.resolveRecognitionEnd?.();
     session.resolveRecognitionEnd = null;
@@ -198,7 +207,8 @@ export default function useVoiceRecorder() {
         recorder,
         chunks: [],
         speechSegments: [],
-        currentSpeech: '',
+        segmentFinalText: '',
+        segmentInterimText: '',
         startedAt: new Date().toISOString(),
         elapsedBeforePause: 0,
         segmentStartedAt: performance.now(),

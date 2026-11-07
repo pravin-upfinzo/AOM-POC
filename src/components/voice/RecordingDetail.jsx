@@ -3,17 +3,6 @@ import { ArrowLeft, ChevronDown, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import AudioPlayer from './AudioPlayer.jsx';
 import { getWorkingTranscript, prepareRecording } from '../../services/transcriptModel.js';
 
-const FIELD_LABELS = {
-  entityName: 'Entity Name',
-  entityType: 'Entity Type',
-  tsp: 'TSP',
-  services: 'Services',
-  bankName: 'Bank Name',
-  branchName: 'Branch Name',
-  assignedBy: 'Task Assigned By',
-  date: 'Date'
-};
-
 function formatDuration(durationMs) {
   const seconds = Math.floor(Math.max(0, durationMs || 0) / 1000);
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -36,22 +25,18 @@ export default function RecordingDetail({
   onRetryTextExtraction,
   onRetryAudioTranscription,
   onChooseTranscript,
-  onConfirm,
   onDelete
 }) {
   const recording = prepareRecording(rawRecording);
+  const statusLabel = transcribing ? 'Transcribing' : processing ? 'Processing' : recording.transcriptionStatus === 'error' ? 'Transcription error' : recording.extractionStatus === 'error' ? 'Extraction error' : recording.status;
+  const statusClass = statusLabel.toLowerCase().replaceAll(' ', '-');
   const workingTranscript = getWorkingTranscript(recording);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(workingTranscript);
   const [error, setError] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [notice, setNotice] = useState('');
-  const fields = Object.entries(recording.extractedFields || {})
-    .filter(([key, value]) => FIELD_LABELS[key] && value);
-  const unmatched = Object.entries(recording.unmatchedFields || {})
-    .filter(([key, value]) => FIELD_LABELS[key] && value);
   const dirty = editing && draft !== workingTranscript;
-  const extractionCurrent = Boolean(recording.extractionTranscriptSnapshot === workingTranscript && !recording.extractionStale);
 
   useEffect(() => {
     setDraft(workingTranscript);
@@ -121,7 +106,7 @@ export default function RecordingDetail({
           <h3>Voice Transcript · Recording {number}</h3>
           <p className="mini">{formatTimestamp(recording.createdAt)} · {formatDuration(recording.durationMs)} · Demo only</p>
         </div>
-        <span className={`recording-status status-${recording.status}`}>{recording.status}</span>
+        <span className={`recording-status status-${statusClass}`}>{statusLabel}</span>
       </header>
 
       <AudioPlayer audioBlob={recording.audioBlob} />
@@ -153,21 +138,9 @@ export default function RecordingDetail({
         {recording.extractionStale && <p className="recording-stale">These suggestions came from a different transcript and cannot be confirmed.</p>}
       </section>
 
-      {(fields.length > 0 || unmatched.length > 0) && (
-        <section className="recording-detail-section">
-          <h4>Suggested values</h4>
-          {!extractionCurrent && <p className="recording-stale">Reprocess the current transcript before confirming these values.</p>}
-          {fields.map(([key, value]) => <p className="detail-field-row" key={key}><span>{FIELD_LABELS[key]}</span><strong>{value}</strong></p>)}
-          {unmatched.map(([key, value]) => <p className="detail-field-row needs-review" key={key}><span>{FIELD_LABELS[key]} · Needs verification</span><strong>{value}</strong></p>)}
-          <button type="button" className="action primary detail-confirm" disabled={!active || !extractionCurrent || fields.length === 0 || processing} onClick={onConfirm}>
-            Confirm Suggested Values
-          </button>
-        </section>
-      )}
-
-      {(error || recording.extractionError || recording.transcriptionError) && (
-        <p role="alert" className="recording-error">{error || recording.extractionError || recording.transcriptionError}</p>
-      )}
+      {error && <p role="alert" className="recording-error">{error}</p>}
+      {recording.transcriptionError && <p role="alert" className="recording-error">{recording.transcriptionError}</p>}
+      {recording.extractionError && <p role="alert" className="recording-error">{recording.extractionError}</p>}
       {deleteError && <p role="alert" className="recording-error">{deleteError}</p>}
       {notice && <p role="status" className="mini">{notice}</p>}
       {recording.transcriptionStatus === 'processing' && <p role="status" className="mini">Transcribing audio…</p>}
