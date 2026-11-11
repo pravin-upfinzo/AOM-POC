@@ -135,7 +135,7 @@ export function updateRecording(id, updates) {
 
       const recording = {
         ...prepareRecording(request.result),
-        ...updates,
+        ...(typeof updates === 'function' ? updates(prepareRecording(request.result)) : updates),
         id,
         updatedAt: new Date().toISOString()
       };

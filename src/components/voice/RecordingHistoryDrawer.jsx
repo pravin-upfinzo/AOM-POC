@@ -132,7 +132,7 @@ export default function RecordingHistoryDrawer({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open]);
+  }, [open, detailHasUnsavedEdits]);
 
   const handleDelete = async (recording) => {
     await onDelete(recording);

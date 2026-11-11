@@ -79,7 +79,7 @@ export default function App(){
  const reviewableSuggestions=pendingSuggestionKeys.length>0||Object.keys(currentUnmatched).length>0;
  const identifiedCount=pendingSuggestionKeys.length+Object.keys(currentUnmatched).length;
  const requiredKeys=['entityName','entityType','services','bankName','assignedBy','date'];
- const missingRequiredFields=requiredKeys.filter(key=>!form[key]);
+ const missingRequiredFields=requiredKeys.filter(key=>!clean(form[key]));
  const setIdBusy=(setter,id,active)=>setter(current=>active?current.includes(id)?current:[...current,id]:current.filter(item=>item!==id));
  const finalizeRecording=async result=>{
   const session=activeSessionRef.current;if(!session||session.id!==result.recordingId)return;
@@ -162,8 +162,13 @@ export default function App(){
   const updates={geminiTranscript:data.transcript,transcriptionStatus:'completed',transcriptionError:null,extractionStatus:'completed',extractionError:null,error:null,status:'processed',extractedFields,unmatchedFields,verificationFields,verificationValues,extractionSource:'gemini-audio',extractionTranscriptSnapshot:data.transcript,extractionStale:!activateEmptyTranscript&&data.transcript!==currentTranscript,appliedAt:null};
   const useFallbackTranscript=activateEmptyTranscript&&!getWorkingTranscript(recording).trim();
   if(useFallbackTranscript){updates.correctedTranscript=data.transcript;updates.transcript=data.transcript;updates.activeTranscriptSource='gemini-audio';updates.transcriptEdited=false;updates.transcriptUpdatedAt=null;updates.extractionStale=false;}
+  const updated=await updateIfTranscriptMatches(recording.id,currentTranscript,updates);
+  if(!updated){
+   await updateRecording(recording.id,current=>({geminiTranscript:data.transcript,transcriptionStatus:'completed',transcriptionError:null,...(current.extractionStatus==='processing'?{extractionStatus:'error',extractionError:'Transcript changed during audio processing. Reprocess the current transcript.'}:{})}));
+   if(activeRecordingIdRef.current===recording.id)setNotice('The transcript changed during audio processing. Your correction and results were kept; Gemini audio is available for comparison.');
+   return;
+  }
   clearSuggestionReview(recording.id);
-   await updateRecording(recording.id,updates);
   if(activeRecordingIdRef.current===recording.id){
    setRecordingError('');
    if(useFallbackTranscript){setTranscript(data.transcript);setNotice(Object.keys(extractedFields).length?'Voice input processed. Review the suggested details before submitting.':'Audio transcribed, but no form suggestions were found.');}
@@ -230,7 +235,7 @@ export default function App(){
   finally{setIdBusy(setDeletingIds,id,false);}
  };
  const reset=()=>{if(unsavedRecording){setNotice('Retry saving the current recording before clearing the form.');return;}setForm(EMPTY);activateRecording(null);setTranscript('');setResolvedUnmatched({});setNotice('Form cleared. Saved recordings and their results are unchanged.');};
- const submit=e=>{e.preventDefault();if(missingRequiredFields.length){setNotice(`Required fields still missing: ${missingRequiredFields.map(key=>LABELS[key]).join(', ')}`);return;}setNotice('Form validated successfully. Demo only: connect this action to your PHP save endpoint.');};
+ const submit=e=>{e.preventDefault();if(missingRequiredFields.length){setNotice(`Required fields still missing: ${missingRequiredFields.map(key=>LABELS[key]).join(', ')}`);return;}const invalidDropdowns=Object.keys(OPTIONS).filter(key=>!OPTIONS[key].includes(form[key]));if(form.branchName&&!(BRANCHES[form.bankName]||[]).includes(form.branchName))invalidDropdowns.push('branchName');if(invalidDropdowns.length){setNotice(`Select valid values for: ${invalidDropdowns.map(key=>LABELS[key]).join(', ')}`);return;}setNotice('Form validated successfully. Demo only: connect this action to your PHP save endpoint.');};
  const suggestionControl=key=>{
   if(!currentDraft?.[key]||(rejectedSuggestions[activeRecordingId]||[]).includes(key))return null;
   const value=suggestionEdits[activeRecordingId]?.[key]??currentDraft[key];
